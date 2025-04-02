@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Resources to be deployed
+resources:
+  - data-generator.yaml
+  - spark-processor.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: stream-analytics
+  app.kubernetes.io/managed-by: kustomize
+
+# Common namespace
+namespace: stream-analytics
+
+# Configuration for resource name prefix
+namePrefix: stream-analytics-
+
+# Configuration patches
+patchesStrategicMerge:
+  # Add any customization patches here
+
+# ConfigMap generators
+configMapGenerator:
+  - name: stream-analytics-common-config
+    files:
+      - common-settings=./configs/common-settings.properties
+    options:
+      disableNameSuffixHash: true
+
+# Environment specific overlays can be defined in separate directories
+# like 'overlays/development', 'overlays/staging', and 'overlays/production' 

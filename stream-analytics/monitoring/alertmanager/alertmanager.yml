@@ -1,0 +1,93 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'alertmanager'
+  smtp_auth_password: 'password'
+  smtp_require_tls: true
+  slack_api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+
+templates:
+  - '/etc/alertmanager/template/*.tmpl'
+
+route:
+  group_by: ['alertname', 'job', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'team-emails'
+  routes:
+  - match:
+      severity: critical
+    receiver: 'pager'
+    continue: true
+  - match:
+      severity: warning
+    receiver: 'slack-notifications'
+    continue: true
+  - match_re:
+      service: ^(kafka|zookeeper)$
+    receiver: 'kafka-team'
+  - match_re:
+      service: ^(spark)$
+    receiver: 'spark-team'
+  - match_re:
+      service: ^(data-quality)$
+    receiver: 'data-quality-team'
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+
+receivers:
+- name: 'team-emails'
+  email_configs:
+  - to: 'team@example.com'
+    send_resolved: true
+
+- name: 'pager'
+  pagerduty_configs:
+  - service_key: '<pagerduty-service-key>'
+    send_resolved: true
+
+- name: 'slack-notifications'
+  slack_configs:
+  - channel: '#stream-analytics-alerts'
+    send_resolved: true
+    title: '{{ template "slack.default.title" . }}'
+    text: '{{ template "slack.default.text" . }}'
+    title_link: '{{ template "slack.default.titlelink" . }}'
+    footer: '{{ template "slack.default.footer" . }}'
+
+- name: 'kafka-team'
+  slack_configs:
+  - channel: '#kafka-alerts'
+    send_resolved: true
+    title: '{{ template "slack.default.title" . }}'
+    text: '{{ template "slack.default.text" . }}'
+  email_configs:
+  - to: 'kafka-team@example.com'
+    send_resolved: true
+
+- name: 'spark-team'
+  slack_configs:
+  - channel: '#spark-alerts'
+    send_resolved: true
+    title: '{{ template "slack.default.title" . }}'
+    text: '{{ template "slack.default.text" . }}'
+  email_configs:
+  - to: 'spark-team@example.com'
+    send_resolved: true
+
+- name: 'data-quality-team'
+  slack_configs:
+  - channel: '#data-quality-alerts'
+    send_resolved: true
+    title: '{{ template "slack.default.title" . }}'
+    text: '{{ template "slack.default.text" . }}'
+  email_configs:
+  - to: 'data-quality@example.com'
+    send_resolved: true 

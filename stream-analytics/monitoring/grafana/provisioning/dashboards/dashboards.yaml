@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Stream Analytics'
+    orgId: 1
+    folder: 'Stream Analytics'
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards 

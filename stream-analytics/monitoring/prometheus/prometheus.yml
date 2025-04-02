@@ -1,0 +1,119 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+           - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "rules/*.yml"
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Kafka monitoring
+  - job_name: 'kafka'
+    static_configs:
+      - targets:
+        - 'kafka:9308'  # JMX Exporter for Kafka metrics
+    metrics_path: /metrics
+
+  # Spark monitoring
+  - job_name: 'spark'
+    static_configs:
+      - targets:
+        - 'spark-master:8080'  # Spark Master metrics
+        - 'spark-worker:8081'  # Spark Worker metrics
+    metrics_path: /metrics/prometheus
+
+  # Airflow monitoring
+  - job_name: 'airflow'
+    static_configs:
+      - targets:
+        - 'airflow-webserver:8080'  # Airflow Webserver
+    metrics_path: /metrics
+    
+  # Data Generator monitoring
+  - job_name: 'data-generator'
+    static_configs:
+      - targets:
+        - 'data-generator:8000'  # Custom metrics endpoint
+    
+  # Spark Processor monitoring
+  - job_name: 'spark-processor'
+    static_configs:
+      - targets:
+        - 'spark-processor:8000'  # Custom metrics endpoint
+
+  # PostgreSQL monitoring
+  - job_name: 'postgresql'
+    static_configs:
+      - targets:
+        - 'postgresql-exporter:9187'  # PostgreSQL exporter
+    
+  # MinIO monitoring
+  - job_name: 'minio'
+    static_configs:
+      - targets:
+        - 'minio:9000'  # MinIO metrics
+    metrics_path: /minio/prometheus/metrics
+
+  # Node Exporter (system metrics)
+  - job_name: 'node'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        replacement: '${1}:9100'
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+        target_label: instance
+
+  # Kubernetes service discovery
+  - job_name: 'kubernetes-service-endpoints'
+    kubernetes_sd_configs:
+      - role: endpoints
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_service_name
+
+  - job_name: 'stream_analytics'
+    static_configs:
+      - targets: ['stream_analytics:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+rule_files:
+  - 'alert.rules.yml' 

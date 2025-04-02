@@ -1,0 +1,40 @@
+groups:
+  - name: StreamAnalytics
+    folder: Stream Analytics
+    interval: 1m
+    rules:
+      - name: HighErrorRate
+        condition: rate(stream_analytics_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High error rate detected
+          description: Error rate is above 0.1 errors per second for the last 5 minutes
+
+      - name: ProcessingTimeHigh
+        condition: rate(stream_analytics_processing_time_seconds_sum[5m]) / rate(stream_analytics_processing_time_seconds_count[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High processing time detected
+          description: Average processing time is above 2 seconds for the last 5 minutes
+
+      - name: QueueSizeHigh
+        condition: stream_analytics_queue_size > 1000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High queue size detected
+          description: Processing queue size is above 1000 items for the last 5 minutes
+
+      - name: NoEventsProcessed
+        condition: rate(stream_analytics_events_processed_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: No events being processed
+          description: No events have been processed in the last 5 minutes 

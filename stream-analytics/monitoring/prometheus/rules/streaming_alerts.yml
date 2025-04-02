@@ -1,0 +1,154 @@
+groups:
+- name: kafka_alerts
+  rules:
+  - alert: KafkaBrokerDown
+    expr: up{job="kafka"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Kafka broker down"
+      description: "Kafka broker {{ $labels.instance }} has been down for more than 2 minutes."
+
+  - alert: KafkaUnderReplicatedPartitions
+    expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Kafka under-replicated partitions"
+      description: "Broker {{ $labels.instance }} has {{ $value }} under-replicated partitions for more than 5 minutes."
+
+  - alert: KafkaHighConsumerLag
+    expr: sum(kafka_consumergroup_lag) by (consumergroup) > 10000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Kafka high consumer lag"
+      description: "Consumer group {{ $labels.consumergroup }} has a lag of {{ $value }} messages."
+
+- name: spark_alerts
+  rules:
+  - alert: SparkMasterDown
+    expr: up{job="spark", instance=~"spark-master.*"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Spark master down"
+      description: "Spark master {{ $labels.instance }} has been down for more than 2 minutes."
+
+  - alert: SparkWorkerDown
+    expr: up{job="spark", instance=~"spark-worker.*"} == 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Spark worker down"
+      description: "Spark worker {{ $labels.instance }} has been down for more than 2 minutes."
+
+  - alert: SparkExecutorFailure
+    expr: spark_executor_failures_total > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Spark executor failures"
+      description: "Spark application {{ $labels.application_id }} has {{ $value }} executor failures."
+
+- name: streaming_alerts
+  rules:
+  - alert: DataGeneratorDown
+    expr: up{job="data-generator"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Data generator down"
+      description: "Data generator {{ $labels.instance }} has been down for more than 2 minutes."
+
+  - alert: SparkProcessorDown
+    expr: up{job="spark-processor"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Spark processor down"
+      description: "Spark processor {{ $labels.instance }} has been down for more than 2 minutes."
+
+  - alert: LowThroughputRate
+    expr: rate(stream_analytics_records_processed_total[5m]) < 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low processing throughput"
+      description: "Processing throughput for {{ $labels.source }} is below 10 records per second."
+
+- name: data_quality_alerts
+  rules:
+  - alert: HighNullRate
+    expr: stream_analytics_null_rate > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High null rate detected"
+      description: "Source {{ $labels.source }} field {{ $labels.field }} has a null rate of {{ $value }} (>10%) for more than 5 minutes."
+
+  - alert: SchemaViolations
+    expr: stream_analytics_schema_violations > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Schema violations detected"
+      description: "Source {{ $labels.source }} has {{ $value }} schema violations in the last 5 minutes."
+
+  - alert: DataQualityChecksFailing
+    expr: stream_analytics_data_quality_checks_failing > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Data quality checks failing"
+      description: "{{ $value }} data quality checks are failing for source {{ $labels.source }}."
+
+  - alert: AnomalyDetected
+    expr: stream_analytics_anomaly_score > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Anomaly detected in data stream"
+      description: "Source {{ $labels.source }} field {{ $labels.field }} has an anomaly score of {{ $value }} (>0.8)."
+
+- name: system_alerts
+  rules:
+  - alert: HighCpuUsage
+    expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage"
+      description: "Instance {{ $labels.instance }} has CPU usage above 80% for more than 5 minutes."
+
+  - alert: HighMemoryUsage
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage"
+      description: "Instance {{ $labels.instance }} has memory usage above 85% for more than 5 minutes."
+
+  - alert: HighDiskUsage
+    expr: 100 - ((node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100) > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High disk usage"
+      description: "Instance {{ $labels.instance }} mount point {{ $labels.mountpoint }} has disk usage above 85% for more than 5 minutes." 

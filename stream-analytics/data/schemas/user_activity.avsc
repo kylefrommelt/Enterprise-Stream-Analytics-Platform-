@@ -1,0 +1,159 @@
+{
+  "type": "record",
+  "name": "UserActivity",
+  "namespace": "com.streamanalytics.schema",
+  "doc": "Schema for user activity events (clickstream data)",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Unique identifier for the event"
+    },
+    {
+      "name": "user_id", 
+      "type": "string",
+      "doc": "Unique identifier for the user"
+    },
+    {
+      "name": "session_id",
+      "type": "string",
+      "doc": "Unique identifier for the user session"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Time when the event occurred (epoch millis)"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "EventType",
+        "symbols": ["click", "view", "scroll", "purchase", "add_to_cart", "remove_from_cart"]
+      },
+      "doc": "Type of user activity event"
+    },
+    {
+      "name": "page_url",
+      "type": "string",
+      "doc": "URL of the page where the event occurred"
+    },
+    {
+      "name": "referrer_url",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "URL of the referring page"
+    },
+    {
+      "name": "device_info",
+      "type": {
+        "type": "record",
+        "name": "DeviceInfo",
+        "fields": [
+          {
+            "name": "device_type",
+            "type": {
+              "type": "enum",
+              "name": "DeviceType",
+              "symbols": ["desktop", "mobile", "tablet", "other"]
+            },
+            "doc": "Type of device used"
+          },
+          {
+            "name": "browser",
+            "type": "string",
+            "doc": "Browser name and version"
+          },
+          {
+            "name": "os",
+            "type": "string",
+            "doc": "Operating system name and version"
+          },
+          {
+            "name": "screen_resolution",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Screen resolution (e.g., 1920x1080)"
+          }
+        ]
+      },
+      "doc": "Information about the user's device"
+    },
+    {
+      "name": "geo_data",
+      "type": {
+        "type": "record",
+        "name": "GeoData",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "User's IP address (anonymized)"
+          },
+          {
+            "name": "country",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Country code (ISO 3166-1 alpha-2)"
+          },
+          {
+            "name": "city",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "City name"
+          },
+          {
+            "name": "latitude",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Latitude coordinate"
+          },
+          {
+            "name": "longitude",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Longitude coordinate"
+          }
+        ]
+      },
+      "doc": "Geographic information about the user"
+    },
+    {
+      "name": "product_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Identifier of the product being viewed/purchased/etc."
+    },
+    {
+      "name": "product_category",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Category of the product"
+    },
+    {
+      "name": "product_price",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Price of the product"
+    },
+    {
+      "name": "quantity",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Quantity of products (for cart/purchase events)"
+    },
+    {
+      "name": "custom_attributes",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Custom event attributes as key-value pairs"
+    }
+  ]
+} 

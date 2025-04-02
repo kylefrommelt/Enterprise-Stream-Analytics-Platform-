@@ -1,0 +1,331 @@
+# Global values for the Stream Analytics Pipeline
+global:
+  environment: development
+  imagePullSecrets: []
+  storageClass: standard
+  domain: stream-analytics.example.com
+
+# Component enablement
+kafka:
+  enabled: true
+spark:
+  enabled: true
+postgresql:
+  enabled: true
+minio:
+  enabled: true
+grafana:
+  enabled: true
+airflow:
+  enabled: true
+
+# Docker image configurations
+images:
+  registry: docker.io
+  repository: yourcompany
+  pullPolicy: IfNotPresent
+  # Override the tag version to use for all images
+  tag: latest
+
+dataGenerator:
+  enabled: true
+  image:
+    repository: stream-analytics/data-generator
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  config:
+    ratePerSecond: 100
+    batchSize: 50
+
+sparkProcessor:
+  enabled: true
+  image:
+    repository: stream-analytics/spark-processor
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  config:
+    checkpointInterval: 10
+    processingTime: "5 seconds"
+
+schemaRegistry:
+  replicaCount: 1
+  image:
+    repository: confluentinc/cp-schema-registry
+    tag: 7.3.0
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  env:
+    SCHEMA_REGISTRY_HOST_NAME: "{{ .Release.Name }}-schema-registry"
+    SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka:9092"
+    SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+
+airflowWebserver:
+  replicaCount: 1
+  image:
+    repository: apache/airflow
+    tag: 2.5.1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@{{ .Release.Name }}-postgresql:5432/airflow"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__FERNET_KEY: "UKMzEm3yIuF0kkvqm3Kxx6ej-umMahP57P0WNc222vQ="
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# Kafka configuration overrides
+kafka:
+  image:
+    repository: confluentinc/cp-kafka
+    tag: 7.3.0
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  persistence:
+    enabled: true
+    size: 10Gi
+  config:
+    autoCreateTopics: true
+    defaultReplicationFactor: 1
+    numPartitions: 3
+    retentionHours: 168  # 7 days
+  metrics:
+    enabled: true
+
+# Spark configuration overrides
+spark:
+  image:
+    repository: bitnami/spark
+    tag: 3.3.1
+    pullPolicy: IfNotPresent
+  master:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  worker:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# PostgreSQL configuration overrides
+postgresql:
+  image:
+    repository: postgres
+    tag: 14.6
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 5Gi
+  config:
+    username: postgres
+    password: postgres
+    database: stream_analytics
+
+# MinIO configuration overrides
+minio:
+  image:
+    repository: minio/minio
+    tag: RELEASE.2023-01-31T02-24-19Z
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi
+  config:
+    accessKey: minioadmin
+    secretKey: minioadmin
+
+# Grafana configuration overrides
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  persistence:
+    enabled: true
+    size: 5Gi
+  dashboards:
+    default:
+      kafka-overview:
+        json: |
+          {
+            "title": "Kafka Overview",
+            "uid": "kafka-overview"
+          }
+      spark-overview:
+        json: |
+          {
+            "title": "Spark Overview",
+            "uid": "spark-overview"
+          }
+      data-quality:
+        json: |
+          {
+            "title": "Data Quality",
+            "uid": "data-quality"
+          }
+
+# Monitoring and logging
+monitoring:
+  enabled: true
+  
+  # Prometheus Configuration
+  prometheus:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    persistence:
+      enabled: true
+      size: 10Gi
+      
+  # Alertmanager Configuration
+  alertmanager:
+    enabled: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    persistence:
+      enabled: true
+      size: 2Gi
+    smtp:
+      enabled: false
+      host: smtp.example.com
+      port: 587
+      from: alerts@example.com
+      to: team@example.com
+      username: alerts@example.com
+      password: password
+      tls: true
+    slack:
+      enabled: true
+      webhook_url: https://hooks.slack.com/services/TXXXXXXXX/BXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX
+      channel: "#stream-analytics-alerts"
+      critical_channel: "#stream-analytics-critical"
+      warning_channel: "#stream-analytics-warnings"
+    pagerduty:
+      enabled: false
+      service_key: your-pagerduty-service-key
+      
+  # Grafana Configuration
+  grafana:
+    enabled: true
+    adminUser: admin
+    adminPassword: admin
+    anonymousAccess: false
+    service:
+      type: ClusterIP
+      nodePort: null
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: "grafana.{{ .Values.global.domain }}"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: grafana
+          port: 3000
+    - host: "airflow.{{ .Values.global.domain }}"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: airflow-webserver
+          port: 8080
+    - host: "minio.{{ .Values.global.domain }}"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: minio
+          port: 9001
+
+# Prometheus Adapter Configuration
+prometheusAdapter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi 

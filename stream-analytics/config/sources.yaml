@@ -1,0 +1,134 @@
+# Configuration file for data sources
+# This file defines all the data sources and their settings
+
+sources:
+  # User activity data source (simulated clickstream)
+  user_activity:
+    type: kafka
+    topic: user-activity
+    schema_file: schemas/user_activity.avsc
+    partitions: 3
+    retention_ms: 604800000  # 7 days
+    generation:
+      rate: 100  # events per second
+      users: 10000
+      sessions: 1000
+      actions:
+        - click
+        - view
+        - scroll
+        - purchase
+        - add_to_cart
+        - remove_from_cart
+      attributes:
+        - device_type
+        - browser
+        - location
+        - referrer
+        - product_id
+
+  # IoT sensor data (simulated temperature sensors)
+  iot_sensors:
+    type: kafka
+    topic: iot-sensors
+    schema_file: schemas/iot_sensor.avsc
+    partitions: 5
+    retention_ms: 86400000  # 1 day
+    generation:
+      rate: 50  # events per second
+      sensors: 500
+      metrics:
+        - temperature
+        - humidity
+        - pressure
+        - battery_level
+      locations:
+        - warehouse_1
+        - warehouse_2
+        - store_east
+        - store_west
+        - distribution_center
+
+  # Transaction data (simulated e-commerce transactions)
+  transactions:
+    type: kafka
+    topic: transactions
+    schema_file: schemas/transaction.avsc
+    partitions: 8
+    retention_ms: 2592000000  # 30 days
+    generation:
+      rate: 20  # events per second
+      users: 5000
+      products: 1000
+      payment_methods:
+        - credit_card
+        - debit_card
+        - paypal
+        - apple_pay
+        - gift_card
+      amount_range:
+        min: 5.00
+        max: 500.00
+
+# Sink configurations
+sinks:
+  # Delta Lake sink for processed data
+  delta_lake:
+    base_path: "s3a://data-lake/"
+    tables:
+      user_activity_hourly:
+        path: "user_activity/hourly/"
+        partition_by: "year,month,day,hour"
+        format: "delta"
+        mode: "append"
+        checkpoint_location: "s3a://data-lake/checkpoints/user_activity_hourly/"
+      
+      iot_sensors_daily:
+        path: "iot_sensors/daily/"
+        partition_by: "year,month,day,location"
+        format: "delta"
+        mode: "append"
+        checkpoint_location: "s3a://data-lake/checkpoints/iot_sensors_daily/"
+      
+      transactions_daily:
+        path: "transactions/daily/"
+        partition_by: "year,month,day"
+        format: "delta"
+        mode: "append"
+        checkpoint_location: "s3a://data-lake/checkpoints/transactions_daily/"
+
+  # PostgreSQL sink for aggregated metrics
+  postgres:
+    jdbc_url: "jdbc:postgresql://postgres:5432/metrics"
+    user: "postgres"
+    password: "postgres"
+    driver: "org.postgresql.Driver"
+    tables:
+      hourly_sales:
+        query: """
+          SELECT 
+            hour(timestamp) as hour,
+            sum(amount) as total_sales,
+            count(*) as transaction_count
+          FROM transactions_stream
+          GROUP BY hour(timestamp)
+        """
+        write_mode: "upsert"
+        keys: ["hour"]
+
+# Monitoring and alerting configuration
+monitoring:
+  data_quality:
+    schedule: "0 */1 * * *"  # Run every hour
+    thresholds:
+      missing_values: 0.05  # Max 5% missing values
+      out_of_range: 0.01    # Max 1% out of range values
+  
+  alerts:
+    email:
+      recipients:
+        - "alerts@example.com"
+        - "operations@example.com"
+    slack:
+      webhook: "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+      channel: "#data-alerts" 

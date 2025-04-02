@@ -1,0 +1,515 @@
+{{- if .Values.monitoring.enabled }}
+# Prometheus deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: prometheus
+          image: "prom/prometheus:v2.42.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.monitoring.prometheus.resources | nindent 12 }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus
+            - name: storage-volume
+              mountPath: /prometheus
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-prometheus-config
+        - name: storage-volume
+          {{- if .Values.monitoring.prometheus.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-prometheus
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+# Prometheus service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+# Prometheus ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-prometheus-config
+  labels:
+    app.kubernetes.io/name: prometheus-config
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      scrape_timeout: 10s
+
+    {{- if .Values.monitoring.alertmanager.enabled }}
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - {{ .Release.Name }}-alertmanager:9093
+    {{- end }}
+
+    # Load rules once and periodically evaluate them
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      # Scrape Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Kafka monitoring
+      - job_name: 'kafka'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-kafka:9308'  # JMX Exporter for Kafka metrics
+
+      # Spark monitoring
+      - job_name: 'spark'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-spark-master:8080'  # Spark Master metrics
+            - '{{ .Release.Name }}-spark-worker:8081'  # Spark Worker metrics
+        metrics_path: /metrics/prometheus
+
+      # Airflow monitoring
+      - job_name: 'airflow'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-airflow-webserver:8080'  # Airflow Webserver
+        metrics_path: /metrics
+        
+      # Data Generator monitoring
+      - job_name: 'data-generator'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-data-generator:8000'  # Custom metrics endpoint
+        
+      # Spark Processor monitoring
+      - job_name: 'spark-processor'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-spark-processor:8000'  # Custom metrics endpoint
+
+      # PostgreSQL monitoring
+      - job_name: 'postgresql'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-postgresql-exporter:9187'  # PostgreSQL exporter
+        
+      # MinIO monitoring
+      - job_name: 'minio'
+        static_configs:
+          - targets:
+            - '{{ .Release.Name }}-minio:9000'  # MinIO metrics
+        metrics_path: /minio/prometheus/metrics
+
+      # Kubernetes service discovery
+      - job_name: 'kubernetes-service-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+  rules/streaming_alerts.yml: |-
+    groups:
+    - name: kafka_alerts
+      rules:
+      - alert: KafkaBrokerDown
+        expr: up{job="kafka"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka broker down"
+          description: "Kafka broker {{ $labels.instance }} has been down for more than 2 minutes."
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka under-replicated partitions"
+          description: "Broker {{ $labels.instance }} has {{ $value }} under-replicated partitions for more than 5 minutes."
+
+    - name: spark_alerts
+      rules:
+      - alert: SparkMasterDown
+        expr: up{job="spark", instance=~"spark-master.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spark master down"
+          description: "Spark master {{ $labels.instance }} has been down for more than 2 minutes."
+
+    - name: streaming_alerts
+      rules:
+      - alert: DataGeneratorDown
+        expr: up{job="data-generator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Data generator down"
+          description: "Data generator {{ $labels.instance }} has been down for more than 2 minutes."
+
+      - alert: SparkProcessorDown
+        expr: up{job="spark-processor"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spark processor down"
+          description: "Spark processor {{ $labels.instance }} has been down for more than 2 minutes."
+
+    - name: data_quality_alerts
+      rules:
+      - alert: HighNullRate
+        expr: stream_analytics_null_rate > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High null rate detected"
+          description: "Source {{ $labels.source }} field {{ $labels.field }} has a null rate of {{ $value }} (>10%) for more than 5 minutes."
+
+      - alert: DataQualityChecksFailing
+        expr: stream_analytics_data_quality_checks_failing > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data quality checks failing"
+          description: "{{ $value }} data quality checks are failing for source {{ $labels.source }}."
+---
+{{- if .Values.monitoring.prometheus.persistence.enabled }}
+# Prometheus PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus-storage
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.global.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.prometheus.persistence.size }}
+{{- end }}
+
+{{- if .Values.monitoring.alertmanager.enabled }}
+# Alertmanager deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-alertmanager
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: alertmanager
+          image: "prom/alertmanager:v0.25.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.monitoring.alertmanager.resources | nindent 12 }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/alertmanager
+            - name: template-volume
+              mountPath: /etc/alertmanager/template
+            - name: storage-volume
+              mountPath: /alertmanager
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-alertmanager-config
+        - name: template-volume
+          configMap:
+            name: {{ .Release.Name }}-alertmanager-templates
+        - name: storage-volume
+          {{- if .Values.monitoring.alertmanager.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-alertmanager
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+# Alertmanager service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-alertmanager
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9093
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+# Alertmanager ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-alertmanager-config
+  labels:
+    app.kubernetes.io/name: alertmanager-config
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+data:
+  alertmanager.yml: |-
+    global:
+      resolve_timeout: 5m
+      {{- if .Values.monitoring.alertmanager.smtp.enabled }}
+      smtp_smarthost: '{{ .Values.monitoring.alertmanager.smtp.host }}:{{ .Values.monitoring.alertmanager.smtp.port }}'
+      smtp_from: '{{ .Values.monitoring.alertmanager.smtp.from }}'
+      smtp_auth_username: '{{ .Values.monitoring.alertmanager.smtp.username }}'
+      smtp_auth_password: '{{ .Values.monitoring.alertmanager.smtp.password }}'
+      smtp_require_tls: {{ .Values.monitoring.alertmanager.smtp.tls }}
+      {{- end }}
+      {{- if .Values.monitoring.alertmanager.slack.enabled }}
+      slack_api_url: '{{ .Values.monitoring.alertmanager.slack.webhook_url }}'
+      {{- end }}
+
+    templates:
+      - '/etc/alertmanager/template/*.tmpl'
+
+    route:
+      group_by: ['alertname', 'job', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'default-receiver'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        continue: true
+      - match:
+          severity: warning
+        receiver: 'warning-alerts'
+        continue: true
+
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'instance']
+
+    receivers:
+    - name: 'default-receiver'
+      {{- if .Values.monitoring.alertmanager.slack.enabled }}
+      slack_configs:
+      - channel: '{{ .Values.monitoring.alertmanager.slack.channel }}'
+        send_resolved: true
+        title: '{{ "{{ template \"slack.default.title\" . }}" }}'
+        text: '{{ "{{ template \"slack.default.text\" . }}" }}'
+      {{- end }}
+      {{- if .Values.monitoring.alertmanager.smtp.enabled }}
+      email_configs:
+      - to: '{{ .Values.monitoring.alertmanager.smtp.to }}'
+        send_resolved: true
+      {{- end }}
+
+    - name: 'critical-alerts'
+      {{- if .Values.monitoring.alertmanager.pagerduty.enabled }}
+      pagerduty_configs:
+      - service_key: '{{ .Values.monitoring.alertmanager.pagerduty.service_key }}'
+        send_resolved: true
+      {{- end }}
+      {{- if .Values.monitoring.alertmanager.slack.enabled }}
+      slack_configs:
+      - channel: '{{ .Values.monitoring.alertmanager.slack.critical_channel }}'
+        send_resolved: true
+        title: '{{ "{{ template \"slack.default.title\" . }}" }}'
+        text: '{{ "{{ template \"slack.default.text\" . }}" }}'
+      {{- end }}
+
+    - name: 'warning-alerts'
+      {{- if .Values.monitoring.alertmanager.slack.enabled }}
+      slack_configs:
+      - channel: '{{ .Values.monitoring.alertmanager.slack.warning_channel }}'
+        send_resolved: true
+        title: '{{ "{{ template \"slack.default.title\" . }}" }}'
+        text: '{{ "{{ template \"slack.default.text\" . }}" }}'
+      {{- end }}
+---
+# Alertmanager Templates ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-alertmanager-templates
+  labels:
+    app.kubernetes.io/name: alertmanager-templates
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+data:
+  slack.tmpl: |-
+    {{ "{{ define \"slack.default.title\" }}" }}
+    [{{ "{{ .Status | toUpper }}{{ if eq .Status \"firing\" }}:{{ .Alerts.Firing | len }}{{ end }}" }}] {{ "{{ .CommonLabels.alertname }}" }}
+    {{ "{{ end }}" }}
+
+    {{ "{{ define \"slack.default.text\" }}" }}
+    {{ "{{ range .Alerts }}" }}
+    *Alert:* {{ "{{ .Annotations.summary }}{{ if .Labels.severity }} - `{{ .Labels.severity }}`{{ end }}" }}
+    *Description:* {{ "{{ .Annotations.description }}" }}
+    *Details:*
+    {{ "{{ range .Labels.SortedPairs }}{{ if and (ne .Name \"alertname\") (ne .Name \"severity\") }}  • {{ .Name }}: {{ .Value }}" }}
+    {{ "{{ end }}{{ end }}" }}
+    {{ "{{ end }}" }}
+    {{ "{{ end }}" }}
+---
+{{- if .Values.monitoring.alertmanager.persistence.enabled }}
+# Alertmanager PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-alertmanager
+  labels:
+    app.kubernetes.io/name: alertmanager-storage
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.global.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.alertmanager.persistence.size }}
+{{- end }}
+{{- end }}
+{{- end }} 

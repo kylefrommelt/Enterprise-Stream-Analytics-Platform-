@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-processor
+  labels:
+    app: spark-processor
+    component: spark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-processor
+  template:
+    metadata:
+      labels:
+        app: spark-processor
+        component: spark
+    spec:
+      containers:
+      - name: spark-processor
+        image: yourcompany/streaming-spark:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: CONFIG_PATH
+          value: "/opt/spark/work-dir/config/sources.yaml"
+        - name: SPARK_MASTER_URL
+          value: "spark://spark-master:7077"
+        - name: SPARK_EXECUTOR_MEMORY
+          value: "1G"
+        - name: SPARK_DRIVER_MEMORY
+          value: "1G"
+        - name: SPARK_WORKER_MEMORY
+          value: "1G"
+        - name: SPARK_WORKER_CORES
+          value: "1"
+        - name: SPARK_RPC_AUTHENTICATION_ENABLED
+          value: "no"
+        - name: SPARK_RPC_ENCRYPTION_ENABLED
+          value: "no"
+        - name: SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED
+          value: "no"
+        - name: SPARK_SSL_ENABLED
+          value: "no"
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2048Mi
+          requests:
+            cpu: 500m
+            memory: 1024Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /opt/spark/work-dir/config
+        - name: spark-apps-volume
+          mountPath: /opt/spark/work-dir/spark
+      volumes:
+      - name: config-volume
+        configMap:
+          name: spark-config
+      - name: spark-apps-volume
+        configMap:
+          name: spark-apps
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-config
+data:
+  sources.yaml: |
+    # Configuration file for data sources
+    # This file defines all the data sources and their settings
+    
+    sources:
+      # User activity data source
+      user_activity:
+        type: kafka
+        topic: user-activity
+        schema_file: schemas/user_activity.avsc
+        partitions: 3
+    
+    # Sink configurations
+    sinks:
+      # Delta Lake sink for processed data
+      delta_lake:
+        base_path: "s3a://data-lake/"
+        tables:
+          user_activity_hourly:
+            path: "user_activity/hourly/"
+            partition_by: "year,month,day,hour"
+            format: "delta"
+            mode: "append"
+            checkpoint_location: "s3a://data-lake/checkpoints/user_activity_hourly/"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-apps
+data:
+  user_activity_processor.py: |
+    #!/usr/bin/env python3
+    """
+    User Activity Data Processor
+    
+    This Spark Streaming job processes user activity data from Kafka,
+    performs transformations, and writes the results to Delta Lake.
+    """
+    
+    import os
+    import sys
+    import yaml
+    
+    from pyspark.sql import SparkSession
+    from pyspark.sql.functions import col, from_json, window, count
+    
+    def main():
+        """Main function."""
+        # Create Spark session
+        spark = SparkSession.builder \
+            .appName("UserActivityProcessor") \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+            .getOrCreate()
+        
+        # Read from Kafka
+        df = spark.readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")) \
+            .option("subscribe", "user-activity") \
+            .option("startingOffsets", "latest") \
+            .load()
+        
+        # Process data
+        parsed_df = df.selectExpr("CAST(value AS STRING)")
+        
+        # Write to Delta Lake
+        query = parsed_df.writeStream \
+            .format("delta") \
+            .outputMode("append") \
+            .option("checkpointLocation", "/tmp/checkpoints/user_activity") \
+            .start("/tmp/delta/user_activity")
+        
+        query.awaitTermination()
+    
+    if __name__ == "__main__":
+        main() 

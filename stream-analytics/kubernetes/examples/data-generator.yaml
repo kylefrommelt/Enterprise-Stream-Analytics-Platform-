@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-generator
+  labels:
+    app: data-generator
+    component: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-generator
+  template:
+    metadata:
+      labels:
+        app: data-generator
+        component: kafka
+    spec:
+      containers:
+      - name: data-generator
+        image: yourcompany/streaming-data-generator:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: SCHEMA_REGISTRY_URL
+          value: "http://schema-registry:8081"
+        - name: CONFIG_PATH
+          value: "/app/config/sources.yaml"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: data-generator-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-generator-config
+data:
+  sources.yaml: |
+    # Configuration file for data sources
+    # This file defines all the data sources and their settings
+    
+    sources:
+      # User activity data source (simulated clickstream)
+      user_activity:
+        type: kafka
+        topic: user-activity
+        schema_file: schemas/user_activity.avsc
+        partitions: 3
+        retention_ms: 604800000  # 7 days
+        generation:
+          rate: 100  # events per second
+          users: 10000
+          sessions: 1000
+          actions:
+            - click
+            - view
+            - scroll
+            - purchase
+            - add_to_cart
+            - remove_from_cart
+      
+      # IoT sensor data (simulated temperature sensors)
+      iot_sensors:
+        type: kafka
+        topic: iot-sensors
+        schema_file: schemas/iot_sensor.avsc
+        partitions: 5
+        retention_ms: 86400000  # 1 day
+        generation:
+          rate: 50  # events per second
+          sensors: 500
+          metrics:
+            - temperature
+            - humidity
+            - pressure
+            - battery_level 

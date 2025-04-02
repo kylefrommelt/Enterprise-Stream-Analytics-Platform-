@@ -1,0 +1,93 @@
+{{- if .Values.autoscaling.enabled }}
+{{- if and .Values.autoscaling.dataGenerator.enabled .Values.dataGenerator.enabled }}
+---
+# Data Generator HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-data-generator
+  labels:
+    app.kubernetes.io/name: data-generator-hpa
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-data-generator
+  minReplicas: {{ .Values.autoscaling.dataGenerator.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.dataGenerator.maxReplicas }}
+  metrics:
+  {{- if .Values.autoscaling.dataGenerator.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.autoscaling.dataGenerator.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- if .Values.autoscaling.dataGenerator.targetMemoryUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.autoscaling.dataGenerator.targetMemoryUtilizationPercentage }}
+  {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+{{- end }}
+
+{{- if and .Values.autoscaling.sparkProcessor.enabled .Values.sparkProcessor.enabled }}
+---
+# Spark Processor HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-spark-processor
+  labels:
+    app.kubernetes.io/name: spark-processor-hpa
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-spark-processor
+  minReplicas: {{ .Values.autoscaling.sparkProcessor.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.sparkProcessor.maxReplicas }}
+  metrics:
+  {{- range .Values.autoscaling.sparkProcessor.metrics }}
+  - {{ toYaml . | nindent 4 }}
+  {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      selectPolicy: Max
+{{- end }}
+{{- end }} 

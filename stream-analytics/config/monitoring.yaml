@@ -1,0 +1,160 @@
+# Monitoring Configuration
+# This file defines the monitoring configuration for the streaming analytics pipeline
+
+services:
+  # Kafka service
+  kafka:
+    type: kafka
+    bootstrap_servers: "kafka:9092"
+    check_topics:
+      - "user-activity"
+      - "iot-sensors"
+      - "transactions"
+    check_interval_seconds: 60
+  
+  # Schema Registry service
+  schema_registry:
+    type: http
+    url: "http://schema-registry:8081/subjects"
+    timeout: 5
+    expected_status: 200
+    check_interval_seconds: 60
+  
+  # Kafka Connect service
+  kafka_connect:
+    type: http
+    url: "http://kafka-connect:8083/connectors"
+    timeout: 5
+    expected_status: 200
+    check_interval_seconds: 60
+  
+  # Spark Master service
+  spark_master:
+    type: spark
+    master_url: "spark://spark-master:7077"
+    check_interval_seconds: 60
+  
+  # Minio (S3) service
+  minio:
+    type: http
+    url: "http://minio:9000/minio/health/live"
+    timeout: 5
+    expected_status: 200
+    check_interval_seconds: 60
+  
+  # Postgres service
+  postgres:
+    type: postgres
+    host: "postgres"
+    port: 5432
+    database: "airflow"
+    user: "airflow"
+    password: "airflow"
+    check_interval_seconds: 60
+  
+  # Airflow Webserver service
+  airflow_webserver:
+    type: http
+    url: "http://airflow-webserver:8080/health"
+    timeout: 5
+    expected_status: 200
+    check_interval_seconds: 60
+  
+  # Grafana service
+  grafana:
+    type: http
+    url: "http://grafana:3000/api/health"
+    timeout: 5
+    expected_status: 200
+    check_interval_seconds: 60
+
+# Metrics collection configuration
+metrics:
+  collection_interval_seconds: 60
+  
+  kafka:
+    collect_topic_metrics: true
+    collect_broker_metrics: true
+    collect_consumer_metrics: true
+    topics:
+      - "user-activity"
+      - "iot-sensors"
+      - "transactions"
+  
+  spark:
+    collect_application_metrics: true
+    collect_executor_metrics: true
+    collect_job_metrics: true
+    applications:
+      - "user_activity_processor"
+  
+  system:
+    collect_cpu_metrics: true
+    collect_memory_metrics: true
+    collect_disk_metrics: true
+    collect_network_metrics: true
+    hosts:
+      - "kafka"
+      - "spark-master"
+      - "spark-worker"
+      - "postgres"
+      - "airflow-webserver"
+
+# Alerting configuration
+alerting:
+  # Service alerts
+  service:
+    email:
+      enabled: true
+      recipients:
+        - "ops@example.com"
+        - "dev@example.com"
+      smtp_server: "smtp.example.com"
+      smtp_port: 587
+      smtp_user: "alerts@example.com"
+      smtp_password: "password"
+    
+    slack:
+      enabled: true
+      webhook: "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+      channel: "#ops-alerts"
+      username: "Service Monitor"
+      icon_emoji: ":warning:"
+  
+  # Data quality alerts
+  data_quality:
+    email:
+      enabled: true
+      recipients:
+        - "data@example.com"
+        - "dev@example.com"
+      smtp_server: "smtp.example.com"
+      smtp_port: 587
+      smtp_user: "alerts@example.com"
+      smtp_password: "password"
+    
+    slack:
+      enabled: true
+      webhook: "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+      channel: "#data-quality-alerts"
+      username: "Data Quality Monitor"
+      icon_emoji: ":bar_chart:"
+
+# Dashboard configuration
+dashboard:
+  grafana:
+    url: "http://grafana:3000"
+    api_key: "eyJrIjoiWHh4WHh4WFh4eFh4eFh4eFh4eFh4eFh4eFh4eFh4eCIsIm4iOiJhcGkta2V5IiwiaWQiOjF9"
+    dashboards:
+      - name: "Kafka Overview"
+        uid: "kafka-overview"
+        folder: "Streaming Analytics"
+      - name: "Spark Overview"
+        uid: "spark-overview"
+        folder: "Streaming Analytics"
+      - name: "Data Quality"
+        uid: "data-quality"
+        folder: "Streaming Analytics"
+      - name: "Business Metrics"
+        uid: "business-metrics"
+        folder: "Streaming Analytics" 

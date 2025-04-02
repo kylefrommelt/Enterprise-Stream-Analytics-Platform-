@@ -1,0 +1,50 @@
+apiVersion: v2
+name: stream-analytics
+description: A Helm chart for deploying the Stream Analytics Pipeline with real-time data processing, monitoring, and quality checks
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - streaming
+  - data-processing
+  - kafka
+  - spark
+  - airflow
+  - data-quality
+  - monitoring
+home: https://github.com/yourusername/stream-analytics
+maintainers:
+  - name: Stream Analytics Team
+    email: team@example.com
+sources:
+  - https://github.com/yourusername/stream-analytics
+annotations:
+  category: Analytics
+  licenses: Apache-2.0
+dependencies:
+  - name: common
+    version: "^1.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: common.enabled
+    tags:
+      - stream-analytics-common
+  - name: kafka
+    version: "~21.0.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: kafka.enabled
+  - name: spark
+    version: "~7.0.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: spark.enabled
+  - name: postgresql
+    version: "~12.0.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: minio
+    version: "~12.0.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: minio.enabled
+  - name: grafana
+    version: "~6.0.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled 

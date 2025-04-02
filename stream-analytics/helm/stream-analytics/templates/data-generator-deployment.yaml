@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-data-generator
+  labels:
+    app.kubernetes.io/name: data-generator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+spec:
+  replicas: {{ .Values.dataGenerator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: data-generator
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: data-generator
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: data-generator
+          image: "{{ .Values.images.registry }}/{{ .Values.images.repository }}/{{ .Values.dataGenerator.image.repository }}:{{ .Values.dataGenerator.image.tag | default .Values.images.tag }}"
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.dataGenerator.env.KAFKA_BOOTSTRAP_SERVERS }}
+            - name: SCHEMA_REGISTRY_URL
+              value: {{ .Values.dataGenerator.env.SCHEMA_REGISTRY_URL }}
+            - name: CONFIG_PATH
+              value: {{ .Values.dataGenerator.env.CONFIG_PATH }}
+          resources:
+            {{- toYaml .Values.dataGenerator.resources | nindent 12 }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Values.dataGenerator.configMap.name }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.dataGenerator.configMap.name }}
+  labels:
+    app.kubernetes.io/name: data-generator-config
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: stream-analytics
+data:
+  sources.yaml: |-
+    {{- (.Files.Get "config/sources.yaml") | nindent 4 }} 

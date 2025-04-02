@@ -1,0 +1,148 @@
+# Data Quality Configuration
+# This file defines the data quality checks for the streaming analytics pipeline
+
+checks:
+  # User Activity Data checks
+  - name: "user_activity_nulls"
+    type: "null_check"
+    columns:
+      - "event_id"
+      - "user_id"
+      - "session_id"
+      - "timestamp"
+      - "event_type"
+      - "page_url"
+    threshold: 0.0  # No nulls allowed in these columns
+  
+  - name: "user_activity_optional_nulls"
+    type: "null_check"
+    columns:
+      - "referrer_url"
+      - "product_id"
+      - "product_category"
+      - "product_price"
+    threshold: 0.3  # Up to 30% nulls allowed in these optional columns
+  
+  - name: "user_activity_unique_ids"
+    type: "uniqueness_check"
+    columns:
+      - "event_id"
+    should_be_unique: true
+  
+  - name: "user_activity_event_type_values"
+    type: "value_range_check"
+    column_ranges:
+      - column: "product_price"
+        min: 0.01
+        max: 10000.0
+      - column: "quantity"
+        min: 1
+        max: 100
+  
+  - name: "user_activity_schema"
+    type: "schema_check"
+    expected_schema:
+      event_id: "string"
+      user_id: "string"
+      session_id: "string"
+      timestamp: "datetime"
+      event_type: "string"
+      page_url: "string"
+      referrer_url: "string"
+      product_id: "string"
+      product_category: "string"
+      product_price: "float"
+      quantity: "int"
+  
+  - name: "user_activity_price_anomalies"
+    type: "anomaly_check"
+    column: "product_price"
+    method: "zscore"
+    threshold: 3.0
+  
+  # IoT Sensor Data checks
+  - name: "iot_sensor_nulls"
+    type: "null_check"
+    columns:
+      - "sensor_id"
+      - "timestamp"
+      - "location"
+      - "readings"
+    threshold: 0.0
+  
+  - name: "iot_sensor_temperature_range"
+    type: "value_range_check"
+    column_ranges:
+      - column: "readings.temperature"
+        min: -40.0
+        max: 100.0
+      - column: "readings.humidity"
+        min: 0.0
+        max: 100.0
+      - column: "readings.pressure"
+        min: 950.0
+        max: 1050.0
+      - column: "readings.battery_level"
+        min: 0.0
+        max: 100.0
+  
+  - name: "iot_sensor_temperature_anomalies"
+    type: "anomaly_check"
+    column: "readings.temperature"
+    method: "iqr"
+    threshold: 1.5
+  
+  # Transaction Data checks
+  - name: "transaction_nulls"
+    type: "null_check"
+    columns:
+      - "transaction_id"
+      - "user_id"
+      - "timestamp"
+      - "product_id"
+      - "amount"
+      - "payment_method"
+    threshold: 0.0
+  
+  - name: "transaction_unique_ids"
+    type: "uniqueness_check"
+    columns:
+      - "transaction_id"
+    should_be_unique: true
+  
+  - name: "transaction_amount_range"
+    type: "value_range_check"
+    column_ranges:
+      - column: "amount"
+        min: 0.01
+        max: 10000.0
+      - column: "quantity"
+        min: 1
+        max: 100
+  
+  - name: "transaction_amount_anomalies"
+    type: "anomaly_check"
+    column: "amount"
+    method: "zscore"
+    threshold: 3.0
+
+# Alerting configuration
+alerting:
+  email:
+    enabled: true
+    threshold: 0.8  # Alert if pass_rate falls below 80%
+    recipients:
+      - "data-alerts@example.com"
+  
+  slack:
+    enabled: true
+    threshold: 0.9  # Alert if pass_rate falls below 90%
+    webhook: "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+    channel: "#data-quality-alerts"
+
+# Reporting configuration
+reporting:
+  frequency: "hourly"  # Options: hourly, daily, weekly
+  store_results: true
+  history_retention_days: 30
+  dashboard_update: true 
